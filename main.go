@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-func renameImageFile(filePath, newFileName string, index, numDigits int, dryRun bool) error {
+func renameFile(filePath, newFileName string, index, numDigits int, dryRun bool) error {
 	ext := strings.ToLower(filepath.Ext(filePath))
 	formatString := "%0" + strconv.Itoa(numDigits) + "d"
 	newFilePath := filepath.Join(filepath.Dir(filePath), strings.ToLower(newFileName)+"-"+fmt.Sprintf(formatString, index)+ext)
@@ -29,7 +29,7 @@ func renameImageFile(filePath, newFileName string, index, numDigits int, dryRun 
 	return nil
 }
 
-type byDate []os.FileInfo
+type byDate []fs.DirEntry
 
 func (d byDate) Len() int {
 	return len(d)
@@ -40,7 +40,9 @@ func (d byDate) Swap(i, j int) {
 }
 
 func (d byDate) Less(i, j int) bool {
-	return d[i].ModTime().Before(d[j].ModTime())
+	infoI, _ := d[i].Info()
+	infoJ, _ := d[j].Info()
+	return infoI.ModTime().Before(infoJ.ModTime())
 }
 
 func main() {
@@ -65,7 +67,7 @@ func main() {
 		}
 	}
 
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		fmt.Println("Error reading directory:", err)
 		return
@@ -89,7 +91,7 @@ func main() {
 			continue
 		}
 		filePath := filepath.Join(dir, file.Name())
-		err := renameImageFile(filePath, newFileName, i+1, numDigits, *dryRun)
+		err := renameFile(filePath, newFileName, i+1, numDigits, *dryRun)
 		if err != nil {
 			fmt.Printf("Error renaming file '%s': %v\n", filePath, err)
 		}
