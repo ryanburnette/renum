@@ -1,0 +1,176 @@
+#!/bin/sh
+
+# Usage and help message
+usage() {
+    echo "Usage: $0 [-order=name|date] [-y] [-d] file(s) new_file_name"
+    echo "  -order  Sort files by 'name' or 'date' (default: name)"
+    echo "  -y      Bypass confirmation prompt"
+    echo "  -d      Dry run: print proposed changes without renaming"
+    echo "  file(s)  Files to rename (e.g., *.jpg)"
+    echo "  new_file_name  Base name for renamed files"
+    exit 1
+}
+
+# Parse command-line options
+order="name"
+dry_run=0
+confirm=1
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -order=*)
+            order=$(echo "$1" | sed 's/-order=//')
+            if [ "$order" != "name" ] && [ "$order" != "date" ]; then
+                echo "Invalid order option. Use 'name' or 'date'"
+                exit 1
+            fi
+            shift
+            ;;
+        -y)
+            confirm=0
+            shift
+            ;;
+        -d)
+            dry_run=1
+            shift
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+# Check arguments (at least one file and new_file_name)
+if [ $# -lt 2 ]; then
+    usage
+fi
+
+# Last argument is new_file_name, rest are files
+new_file_name="${*: -1}"
+set -- "${@:1:$#-1}" # Remove last argument from $@
+
+# Validate files
+file_count=0
+for f in "$@"; do
+    if [ -f "$f" ]; then
+        file_count=$((file_count + 1))
+    else
+        echo "Warning: '$f' is not a regular file, skipping"
+    fi
+done
+
+if [ $file_count -eq 0 ]; then
+    echo "Error: No valid files provided"
+    exit 1
+fi
+
+# Get directory from first file
+abs_dir=$(dirname "$1")
+for f in "$@"; do
+    if [ -f "$f" ]; then
+        if [ "$(dirname "$f")" != "$abs_dir" ]; then
+            echo "Error: All files must be in the same directory"
+            exit 1
+        fi
+    fi
+done
+
+# Convert directory to absolute path
+case "$abs_dir" in
+    /*) ;;
+    *) abs_dir=$(cd "$abs_dir" && pwd) ;;
+esac
+if [ $? -ne 0 ]; then
+    echo "Error: Cannot access directory '$abs_dir'"
+    exit 1
+fi
+
+# Determine number of digits for suffix
+if [ $file_count -lt 10 ]; then
+    num_digits=1
+elif [ $file_count -lt 100 ]; then
+    num_digits=2
+elif [ $file_count -lt 1000 ]; then
+    num_digits=3
+elif [ $file_count -lt 10000 ]; then
+    num_digits=4
+else
+    num_digits=5
+fi
+
+# Function to format number with leading zeros
+format_number() {
+    number=$1
+    digits=$2
+    printf "%0${digits}d" "$number"
+}
+
+# Collect and sort files
+files=""
+if [ "$order" = "date" ]; then
+    tmpfile=$(mktemp 2>/dev/null || echo "/tmp/renum.$$")
+    for f in "$@"; do
+        if [ -f "$f" ]; then
+            base=$(basename "$f")
+            echo "$(ls -l "$f" | awk '{print $6, $7, $8}') $base"
+        fi
+    done | sort -k1,3 > "$tmpfile"
+    files=$(awk '{print $4}' "$tmpfile")
+    rm -f "$tmpfile"
+else
+    for f in "$@"; do
+        if [ -f "$f" ]; then
+            files="$files $(basename "$f")"
+        fi
+    done
+    files=$(echo "$files" | tr ' ' '\n' | sort)
+fi
+
+# Print planned actions
+echo "Planned actions in directory '$abs_dir':"
+index=1
+for file in $files; do
+    full_path="$abs_dir/$file"
+    if [ -f "$full_path" ]; then
+        ext=$(echo "$file" | sed 's/.*\(\.[^.]*\)$/\1/' | tr '[:upper:]' '[:lower:]')
+        [ "$ext" = "$file" ] && ext=""
+        new_name=$(echo "$new_file_name" | tr '[:upper:]' '[:lower:]')
+        new_file="$new_name-$(format_number $index $num_digits)$ext"
+        echo "  Rename '$file' to '$new_file'"
+        index=$((index + 1))
+    fi
+done
+
+# If dry run, exit
+if [ $dry_run -eq 1 ]; then
+    echo "Dry run complete. No files were renamed."
+    exit 0
+fi
+
+# Confirm entire job
+if [ $confirm -eq 1 ]; then
+    echo "Proceed with renaming all files? (y/n)"
+    read answer
+    case "$answer" in
+        [yY]*) ;;
+        *) echo "Aborted."; exit 0 ;;
+    esac
+fi
+
+# Perform renaming
+index=1
+for file in $files; do
+    full_path="$abs_dir/$file"
+    if [ -f "$full_path" ]; then
+        ext=$(echo "$file" | sed 's/.*\(\.[^.]*\)$/\1/' | tr '[:upper:]' '[:lower:]')
+        [ "$ext" = "$file" ] && ext=""
+        new_name=$(echo "$new_file_name" | tr '[:upper:]' '[:lower:]')
+        new_file="$new_name-$(format_number $index $num_digits)$ext"
+        if mv "$full_path" "$abs_dir/$new_file"; then
+            echo "Renamed '$file' to '$new_file'"
+        else
+            echo "Error renaming '$file'"
+        fi
+        index=$((index + 1))
+    fi
+done
