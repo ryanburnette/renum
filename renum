@@ -2,10 +2,9 @@
 
 # Usage and help message
 usage() {
-    echo "Usage: $0 [-order=name|date] [-y] [-d] file(s) new_file_name"
+    echo "Usage: $0 [-order=name|date] [-y] file(s) new_file_name"
     echo "  -order  Sort files by 'name' or 'date' (default: name)"
-    echo "  -y      Bypass confirmation prompt"
-    echo "  -d      Dry run: print proposed changes without renaming"
+    echo "  -y      Bypass confirmation prompt and skip printing planned actions"
     echo "  file(s)  Files to rename (e.g., *.jpg)"
     echo "  new_file_name  Base name for renamed files"
     exit 1
@@ -13,7 +12,6 @@ usage() {
 
 # Parse command-line options
 order="name"
-dry_run=0
 confirm=1
 
 while [ $# -gt 0 ]; do
@@ -28,10 +26,6 @@ while [ $# -gt 0 ]; do
             ;;
         -y)
             confirm=0
-            shift
-            ;;
-        -d)
-            dry_run=1
             shift
             ;;
         *)
@@ -126,29 +120,23 @@ else
     files=$(echo "$files" | tr ' ' '\n' | sort)
 fi
 
-# Print planned actions
-echo "Planned actions in directory '$abs_dir':"
-index=1
-for file in $files; do
-    full_path="$abs_dir/$file"
-    if [ -f "$full_path" ]; then
-        ext=$(echo "$file" | sed 's/.*\(\.[^.]*\)$/\1/' | tr '[:upper:]' '[:lower:]')
-        [ "$ext" = "$file" ] && ext=""
-        new_name=$(echo "$new_file_name" | tr '[:upper:]' '[:lower:]')
-        new_file="$new_name-$(format_number $index $num_digits)$ext"
-        echo "  Rename '$file' to '$new_file'"
-        index=$((index + 1))
-    fi
-done
-
-# If dry run, exit
-if [ $dry_run -eq 1 ]; then
-    echo "Dry run complete. No files were renamed."
-    exit 0
-fi
-
-# Confirm entire job
+# Print planned actions only if confirmation is needed
 if [ $confirm -eq 1 ]; then
+    echo "Planned actions in directory '$abs_dir':"
+    index=1
+    for file in $files; do
+        full_path="$abs_dir/$file"
+        if [ -f "$full_path" ]; then
+            ext=$(echo "$file" | sed 's/.*\(\.[^.]*\)$/\1/' | tr '[:upper:]' '[:lower:]')
+            [ "$ext" = "$file" ] && ext=""
+            new_name=$(echo "$new_file_name" | tr '[:upper:]' '[:lower:]')
+            new_file="$new_name-$(format_number $index $num_digits)$ext"
+            echo "  Rename '$file' to '$new_file'"
+            index=$((index + 1))
+        fi
+    done
+
+    # Confirm entire job
     echo "Proceed with renaming all files? (y/n)"
     read answer
     case "$answer" in

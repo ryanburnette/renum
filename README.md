@@ -49,4 +49,3 @@ renum [-order=name|date] [-y] [-d] file(s) new_file_name
 
 - Ensure all files are in the same directory to avoid errors.
 - Use with `genfiles.sh` to create test files for experimenting with `renum`.
-
